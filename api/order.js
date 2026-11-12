@@ -1,0 +1,140 @@
+// Vercel Serverless Function: Secure Order Submission Handler
+// Validates, sanitizes input and stores water filter candle orders in Supabase
+const { supabaseFetch } = require('./_lib/supabase');
+
+// Simple In-Memory Rate Limiting per IP (prevent spam)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS = 5; // Max 5 orders per minute per IP
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return false;
+  }
+  if (now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return false;
+  }
+  entry.count++;
+  return entry.count > MAX_REQUESTS;
+}
+
+// Clean up stale IPs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap.entries()) {
+    if (now > entry.resetAt) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
+
+module.exports = async function handler(req, res) {
+  // 1. Strict Security Headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Handle CORS
+  const allowedOrigin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // 2. Rate Limiting Check
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  if (isRateLimited(clientIp)) {
+    return res.status(429).json({ 
+      error: 'لقد أرسلت عدة طلبات مؤخراً، يرجى الانتظار دقيقة قبل المحاولة مجدداً.' 
+    });
+  }
+
+  try {
+    const {
+      customerName,
+      customerPhone,
+      governorate,
+      detailedAddress,
+      packageId,
+      packageName,
+      packagePrice,
+      currentFilterStages,
+      needInstallationService
+    } = req.body || {};
+
+    // 3. Strict Server-Side Validation
+    const cleanName = String(customerName || '').trim();
+    const cleanPhone = String(customerPhone || '').replace(/[\s\-\+]/g, '').trim();
+    const cleanGov = String(governorate || '').trim();
+    const cleanAddress = String(detailedAddress || '').trim();
+
+    if (!cleanName || cleanName.length < 3 || cleanName.length > 80) {
+      return res.status(400).json({ error: 'من فضلك اكتب الاسم بالكامل.' });
+    }
+
+    // Egyptian phone validation: 010, 011, 012, 015 (11 digits)
+    const egyptPhoneRegex = /^01[0125][0-9]{8}$/;
+    if (!egyptPhoneRegex.test(cleanPhone)) {
+      return res.status(400).json({ error: 'من فضلك اكتب رقم هاتف مصري صحيح (مثال: 01012345678).' });
+    }
+
+    if (!cleanGov || cleanGov.length > 50) {
+      return res.status(400).json({ error: 'من فضلك اختر المحافظة.' });
+    }
+
+    if (!cleanAddress || cleanAddress.length < 5 || cleanAddress.length > 250) {
+      return res.status(400).json({ error: 'من فضلك اكتب العنوان بالتفصيل.' });
+    }
+
+    const validPackages = {
+      '3_stages': 'طقم 3 مراحل — 300 ج.م',
+      '5_stages': 'طقم 5 مراحل — 650 ج.م',
+      '7_stages': 'طقم 7 مراحل — 1,400 ج.م'
+    };
+
+    const targetPkgText = validPackages[packageId] || `${packageName || 'طقم شمعات فلتر'} (${packagePrice || ''})`;
+
+    // 4. Prepare DB record (Compatible with Supabase maintenance_requests schema)
+    const record = {
+      client_name: cleanName,
+      client_phone: cleanPhone,
+      device_type: `فلتر مياه: ${targetPkgText}`,
+      governorate_region: cleanGov,
+      address: cleanAddress,
+      problem_description: `طلب شمعات: ${targetPkgText} | مراحل الفلتر الحالي: ${currentFilterStages || 'مش عارف'} | خدمة التركيب: ${needInstallationService || 'لا'}`,
+      status: 'new',
+      source: 'water_filter_landing'
+    };
+
+    // 5. Store in Supabase
+    await supabaseFetch('maintenance_requests', {
+      method: 'POST',
+      headers: {
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(record)
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'تم استلام طلبك بنجاح وسنتواصل معك لتأكيد الباقة والتوصيل.'
+    });
+
+  } catch (err) {
+    // Avoid exposing internal DB stack trace to user
+    return res.status(500).json({
+      error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى أو الاتصال بنا.'
+    });
+  }
+};
