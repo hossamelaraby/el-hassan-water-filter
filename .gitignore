@@ -8,3 +8,5 @@ dist/
 screenshot-*.png
 test-runner.js
 take-screenshots.js
+
+.vercel
