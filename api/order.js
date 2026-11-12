@@ -1,6 +1,6 @@
 // Vercel Serverless Function: Secure Order Submission Handler
 // Validates, sanitizes input and stores water filter candle orders in Supabase
-const { supabaseFetch } = require('./_lib/supabase');
+import { supabaseFetch } from './_lib/supabase.js';
 
 // Simple In-Memory Rate Limiting per IP (prevent spam)
 const rateLimitMap = new Map();
@@ -22,17 +22,7 @@ function isRateLimited(ip) {
   return entry.count > MAX_REQUESTS;
 }
 
-// Clean up stale IPs every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitMap.entries()) {
-    if (now > entry.resetAt) {
-      rateLimitMap.delete(ip);
-    }
-  }
-}, 5 * 60 * 1000);
-
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // 1. Strict Security Headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -53,7 +43,7 @@ module.exports = async function handler(req, res) {
   }
 
   // 2. Rate Limiting Check
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
   if (isRateLimited(clientIp)) {
     return res.status(429).json({ 
       error: 'لقد أرسلت عدة طلبات مؤخراً، يرجى الانتظار دقيقة قبل المحاولة مجدداً.' 
@@ -132,9 +122,8 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
-    // Avoid exposing internal DB stack trace to user
     return res.status(500).json({
       error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى أو الاتصال بنا.'
     });
   }
-};
+}

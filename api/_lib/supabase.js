@@ -3,7 +3,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 
-async function supabaseFetch(table, options = {}) {
+export async function supabaseFetch(table, options = {}) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error('Supabase environment variables (SUPABASE_URL, SUPABASE_SECRET_KEY) are not configured');
   }
@@ -38,7 +38,3 @@ async function supabaseFetch(table, options = {}) {
 
   return data;
 }
-
-module.exports = {
-  supabaseFetch
-};
