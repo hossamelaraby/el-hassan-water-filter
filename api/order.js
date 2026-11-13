@@ -54,8 +54,12 @@ export default async function handler(req, res) {
     const {
       customerName,
       customerPhone,
+      productSelected,
+      quantity = 1,
       governorate,
+      cityRegion = '',
       detailedAddress,
+      notes = '',
       packageId,
       packageName,
       packagePrice,
@@ -67,9 +71,12 @@ export default async function handler(req, res) {
     const cleanName = String(customerName || '').trim();
     const cleanPhone = String(customerPhone || '').replace(/[\s\-\+]/g, '').trim();
     const cleanGov = String(governorate || '').trim();
+    const cleanCity = String(cityRegion || '').trim();
     const cleanAddress = String(detailedAddress || '').trim();
+    const cleanNotes = String(notes || '').trim();
+    const cleanQty = Number(quantity) || 1;
 
-    if (!cleanName || cleanName.length < 3 || cleanName.length > 80) {
+    if (!cleanName || cleanName.length < 2 || cleanName.length > 80) {
       return res.status(400).json({ error: 'من فضلك اكتب الاسم بالكامل.' });
     }
 
@@ -88,23 +95,27 @@ export default async function handler(req, res) {
     }
 
     const validPackages = {
-      '3_stages': 'طقم 3 مراحل — 300 ج.م',
-      '5_stages': 'طقم 5 مراحل — 650 ج.م',
-      '7_stages': 'طقم 7 مراحل — 1,400 ج.م'
+      '3_stages': 'طقم شمع 3 مراحل — 300 جنيه',
+      '5_stages': 'طقم شمع 5 مراحل — 650 جنيه',
+      '7_stages': 'طقم شمع 7 مراحل — 1,400 جنيه',
+      'custom': 'شمعة مفردة / مش متأكد من النوع'
     };
 
-    const targetPkgText = validPackages[packageId] || `${packageName || 'طقم شمعات فلتر'} (${packagePrice || ''})`;
+    const targetPkgText = productSelected || validPackages[packageId] || `${packageName || 'طقم شمعات فلتر'} (${packagePrice || ''})`;
+
+    const fullAddress = cleanCity ? `${cleanGov} - ${cleanCity} - ${cleanAddress}` : `${cleanGov} - ${cleanAddress}`;
+    const desc = `المنتج: ${targetPkgText} | الكمية: ${cleanQty} | المدينة/المنطقة: ${cleanCity || 'غير محدد'} | الملاحظات: ${cleanNotes || 'لا يوجد'}`;
 
     // 4. Prepare DB record (Compatible with Supabase maintenance_requests schema)
     const record = {
       client_name: cleanName,
       client_phone: cleanPhone,
-      device_type: `فلتر مياه: ${targetPkgText}`,
+      device_type: `شمعات فلتر: ${targetPkgText}`,
       governorate_region: cleanGov,
-      address: cleanAddress,
-      problem_description: `طلب شمعات: ${targetPkgText} | مراحل الفلتر الحالي: ${currentFilterStages || 'مش عارف'} | خدمة التركيب: ${needInstallationService || 'لا'}`,
+      address: fullAddress,
+      problem_description: desc,
       status: 'new',
-      source: 'water_filter_landing'
+      source: 'water_filter_video_landing'
     };
 
     // 5. Store in Supabase
@@ -118,12 +129,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: 'تم استلام طلبك بنجاح وسنتواصل معك لتأكيد الباقة والتوصيل.'
+      message: 'تم استلام طلبك بنجاح وسنتواصل معك لتأكيد التفاصيل والشحن.'
     });
 
   } catch (err) {
     return res.status(500).json({
-      error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى أو الاتصال بنا.'
+      error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى أو التواصل معنا عبر واتساب.'
     });
   }
 }

@@ -6,7 +6,8 @@ dist/
 .DS_Store
 *.log
 screenshot-*.png
+client-video-*.png
+live-*.png
+*.mjs
 test-runner.js
 take-screenshots.js
-
-.vercel
