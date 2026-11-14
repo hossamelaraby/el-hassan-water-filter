@@ -63,8 +63,8 @@ export default async function handler(req, res) {
       packageId,
       packageName,
       packagePrice,
-      currentFilterStages,
-      needInstallationService
+      shippingFee = 65,
+      totalAmount
     } = req.body || {};
 
     // 3. Strict Server-Side Validation
@@ -75,6 +75,7 @@ export default async function handler(req, res) {
     const cleanAddress = String(detailedAddress || '').trim();
     const cleanNotes = String(notes || '').trim();
     const cleanQty = Number(quantity) || 1;
+    const shipping = 65; // Fixed 65 EGP shipping for all governorates
 
     if (!cleanName || cleanName.length < 2 || cleanName.length > 80) {
       return res.status(400).json({ error: 'من فضلك اكتب الاسم بالكامل.' });
@@ -94,17 +95,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'من فضلك اكتب العنوان بالتفصيل.' });
     }
 
-    const validPackages = {
-      '3_stages': 'طقم شمع 3 مراحل — 300 جنيه',
-      '5_stages': 'طقم شمع 5 مراحل — 650 جنيه',
-      '7_stages': 'طقم شمع 7 مراحل — 1,400 جنيه',
-      'custom': 'شمعة مفردة / مش متأكد من النوع'
+    const priceMap = {
+      'طقم شمع 3 مراحل (300 جنيه)': 300,
+      'طقم شمع 5 مراحل (650 جنيه)': 650,
+      'طقم شمع 7 مراحل (1,400 جنيه)': 1400,
+      '3_stages': 300,
+      '5_stages': 650,
+      '7_stages': 1400
     };
 
-    const targetPkgText = productSelected || validPackages[packageId] || `${packageName || 'طقم شمعات فلتر'} (${packagePrice || ''})`;
+    const targetPkgText = productSelected || packageName || 'طقم شمعات فلتر';
+    const unitPrice = priceMap[productSelected] || priceMap[packageId] || 0;
+    const subtotal = unitPrice ? unitPrice * cleanQty : (packagePrice || 'غير محدد');
+    const calculatedTotal = unitPrice ? (subtotal + shipping) : (totalAmount || 'يحدد لاحقاً');
 
     const fullAddress = cleanCity ? `${cleanGov} - ${cleanCity} - ${cleanAddress}` : `${cleanGov} - ${cleanAddress}`;
-    const desc = `المنتج: ${targetPkgText} | الكمية: ${cleanQty} | المدينة/المنطقة: ${cleanCity || 'غير محدد'} | الملاحظات: ${cleanNotes || 'لا يوجد'}`;
+    const desc = `المنتج: ${targetPkgText} | الكمية: ${cleanQty} | سعر المنتجات: ${subtotal} ج.م | مصاريف الشحن: ${shipping} ج.م | الإجمالي المطلوب عند الاستلام: ${calculatedTotal} ج.م | المدينة/المنطقة: ${cleanCity || 'غير محدد'} | الملاحظات: ${cleanNotes || 'لا يوجد'}`;
 
     // 4. Prepare DB record (Compatible with Supabase maintenance_requests schema)
     const record = {
@@ -115,7 +121,7 @@ export default async function handler(req, res) {
       address: fullAddress,
       problem_description: desc,
       status: 'new',
-      source: 'water_filter_video_landing'
+      source: 'water_filter_direct_landing'
     };
 
     // 5. Store in Supabase
@@ -129,12 +135,14 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: 'تم استلام طلبك بنجاح وسنتواصل معك لتأكيد التفاصيل والشحن.'
+      shippingFee: shipping,
+      totalAmount: calculatedTotal,
+      message: 'تم استلام طلبك بنجاح وسنتواصل معك هاتفياً لتأكيد تفاصيل وموعد التوصيل.'
     });
 
   } catch (err) {
     return res.status(500).json({
-      error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى أو التواصل معنا عبر واتساب.'
+      error: 'تعذر معالجة الطلب حالياً. يرجى المحاولة مرة أخرى لاحقاً.'
     });
   }
 }
