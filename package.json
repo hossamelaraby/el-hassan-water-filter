@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "site:pause": "node scripts/toggle-site.mjs pause",
-    "site:resume": "node scripts/toggle-site.mjs unpause"
+    "site:pause": "node scripts/toggle-site.js pause",
+    "site:resume": "node scripts/toggle-site.js unpause"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
